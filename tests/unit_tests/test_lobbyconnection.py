@@ -12,6 +12,7 @@ from server.exceptions import ClientError
 from server.game_service import GameService
 from server.gameconnection import GameConnection
 from server.games import CustomGame, Game, GameState, InitMode, VisibilityState
+from server.games.dedicated import DedicatedServerJoin
 from server.geoip_service import GeoIpService
 from server.ladder_service import LadderService
 from server.ladder_service.veto_system import VetoService
@@ -293,6 +294,39 @@ async def test_launch_game(lobbyconnection, game, player_factory):
     assert lobbyconnection.game_connection.player == lobbyconnection.player
     assert lobbyconnection.player.state == PlayerState.STARTING_GAME
     lobbyconnection.send.assert_called_once()
+
+
+async def test_launch_game_dedicated_server_args(lobbyconnection, game, player_factory):
+    lobbyconnection.player = player_factory(player_id=7)
+    lobbyconnection.game_connection = None
+    lobbyconnection.send = mock.AsyncMock()
+    game.dedicated_server = DedicatedServerJoin(
+        "203.0.113.5:27050", {7: "token-of-seven", 8: "token-of-eight"}
+    )
+
+    await lobbyconnection.launch_game(game)
+
+    message = lobbyconnection.send.call_args[0][0]
+    assert message["command"] == "game_launch"
+    assert message["args"][-6:] == [
+        "/connectserver", "203.0.113.5:27050",
+        "/servertoken", "token-of-seven",
+        "/serveruid", "7",
+    ]
+    assert "token-of-eight" not in str(message)
+
+
+async def test_launch_game_without_dedicated_server_has_no_server_args(
+    lobbyconnection, game, player_factory
+):
+    lobbyconnection.player = player_factory()
+    lobbyconnection.game_connection = None
+    lobbyconnection.send = mock.AsyncMock()
+
+    await lobbyconnection.launch_game(game)
+
+    message = lobbyconnection.send.call_args[0][0]
+    assert "/connectserver" not in message["args"]
 
 
 async def test_command_game_host_creates_correct_game(

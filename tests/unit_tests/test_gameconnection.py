@@ -17,6 +17,7 @@ from server.games import (
     ValidityState,
     Victory
 )
+from server.games.dedicated import DedicatedServerJoin
 from server.players import PlayerState
 from server.protocol import DisconnectedError
 from server.timing import datetime_now
@@ -209,6 +210,61 @@ async def test_handle_lobby_state_handles_GameError(
     await exhaust_callbacks()
 
     game_connection.abort.assert_called_once()
+
+
+async def test_handle_action_GameState_lobby_dedicated_server_host(
+    game: Game,
+    game_connection: GameConnection,
+    players
+):
+    game.dedicated_server = DedicatedServerJoin("203.0.113.5:27050", {1: "tok-1"})
+    game_connection.player = players.hosting
+    game.map = Map(None, "some_map")
+
+    await game_connection.handle_action("GameState", ["Lobby"])
+    await exhaust_callbacks()
+
+    game.set_hosted.assert_called_once()
+    game_connection.protocol.send_message.assert_not_called()
+
+
+async def test_handle_action_GameState_lobby_dedicated_server_joiner(
+    game: Game,
+    game_connection: GameConnection,
+    players
+):
+    game.dedicated_server = DedicatedServerJoin(
+        "203.0.113.5:27050", {1: "tok-1", 3: "tok-3"}
+    )
+    game_connection.connect_to_host = mock.AsyncMock()
+    game_connection.connect_to_peer = mock.AsyncMock()
+    game_connection.player = players.joining
+    players.joining.game = game
+    game.host = players.hosting
+    game.connections = [mock.Mock()]
+
+    await game_connection.handle_action("GameState", ["Lobby"])
+    await exhaust_callbacks()
+
+    game_connection.connect_to_host.assert_not_called()
+    game_connection.connect_to_peer.assert_not_called()
+    game.add_game_connection.assert_called_once_with(game_connection)
+    assert game_connection.state is GameConnectionState.CONNECTED_TO_HOST
+    game_connection.protocol.send_message.assert_not_called()
+
+
+async def test_abort_dedicated_server_sends_no_DisconnectFromPeer(
+    game: Game,
+    game_connection: GameConnection,
+    players
+):
+    game.dedicated_server = DedicatedServerJoin("203.0.113.5:27050", {1: "tok-1"})
+    game.state = GameState.LOBBY
+    game_connection.disconnect_all_peers = mock.AsyncMock()
+
+    await game_connection.abort()
+
+    game_connection.disconnect_all_peers.assert_not_called()
 
 
 async def test_handle_action_GameState_lobby_calls_abort(

@@ -107,6 +107,9 @@ class ConfigurationStore:
         self.USE_POLICY_SERVER = True
 
         self.ALLOW_PASSWORD_LOGIN = True
+        # Lets the control server create games played on a dedicated game
+        # server (POST /dedicated_games, games/dedicated.py)
+        self.DEDICATED_SERVER_GAMES = False
         # How many seconds a connection has to authenticate before being killed
         self.LOGIN_TIMEOUT = 5 * 60
 

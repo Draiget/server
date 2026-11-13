@@ -52,6 +52,7 @@ from .typedefs import (
 if TYPE_CHECKING:
     from server.game_service import GameService
     from server.gameconnection import GameConnection
+    from server.games.dedicated import DedicatedServerJoin
     from server.stats.game_stats_service import GameStatsService
 
 
@@ -114,6 +115,8 @@ class Game:
         self.matchmaker_queue_id = matchmaker_queue_id
         self.setup_timeout = setup_timeout
         self.state = GameState.INITIALIZING
+        # Set for a game played on a dedicated game server (games/dedicated.py)
+        self.dedicated_server: Optional["DedicatedServerJoin"] = None
         self._connections: dict[Player, "GameConnection"] = {}
         self._configured_player_ids: set[int] = set()
         self.enforce_rating = False

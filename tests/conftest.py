@@ -242,6 +242,7 @@ def make_game(database, uid, players, game_type=Game):
     players.peer.getGame = mock.AsyncMock(return_value=game)
     game.host = players.hosting
     game.init_mode = InitMode.NORMAL_LOBBY
+    game.dedicated_server = None
     game.name = "Some game name"
     game.id = uid
     return game

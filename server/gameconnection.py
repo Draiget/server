@@ -133,6 +133,17 @@ class GameConnection(GpgNetServerProtocol):
         appropriately
         """
         player_state = self.player.state
+        if self.game.dedicated_server is not None:
+            # The game connects to the game server itself: no peer setup.
+            if player_state == PlayerState.HOSTING:
+                self.game.set_hosted()
+            elif player_state == PlayerState.JOINING:
+                self._state = GameConnectionState.CONNECTED_TO_HOST
+                try:
+                    self.game.add_game_connection(self)
+                except GameError as e:
+                    await self.abort(f"GameError while joining {self.game.id}: {e}")
+            return
         if player_state == PlayerState.HOSTING:
             await self.send_HostGame(self.game.map.folder_name)
             self.game.set_hosted()
@@ -617,7 +628,7 @@ class GameConnection(GpgNetServerProtocol):
 
             self._logger.debug("%s.abort(%s)", self, log_message)
 
-            if self.game.state is GameState.LOBBY:
+            if self.game.state is GameState.LOBBY and self.game.dedicated_server is None:
                 await self.disconnect_all_peers()
 
             self._state = GameConnectionState.ENDED

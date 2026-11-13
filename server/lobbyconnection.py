@@ -1278,6 +1278,12 @@ class LobbyConnection:
             "rating_type": game.rating_type,
             **options._asdict()
         }
+        if game.dedicated_server is not None:
+            # This player's own way onto the game server; never another's.
+            cmd["args"] = [
+                *cmd["args"],
+                *game.dedicated_server.launch_args(self.player.id),
+            ]
 
         return {k: v for k, v in cmd.items() if v is not None}
 
