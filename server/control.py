@@ -3,6 +3,7 @@ Tiny http server for introspecting state
 """
 
 import asyncio
+import json
 import logging
 import socket
 from typing import TYPE_CHECKING, ClassVar, Optional, cast
@@ -14,6 +15,7 @@ from .decorators import with_logger
 from .game_service import GameService
 from .games import FeaturedModType
 from .games.dedicated import (
+    DEDICATED_SERVER_REPORTER,
     DedicatedServerGame,
     DedicatedServerJoin,
     launch_dedicated_game
@@ -46,6 +48,7 @@ class ControlServer:
             web.get("/games", self.games),
             web.get("/players", self.players),
             web.post("/dedicated_games", self.create_dedicated_game),
+            web.post("/dedicated_games/{game_id}/results", self.report_dedicated_results),
         ])
         self._launches: set[asyncio.Task] = set()
 
@@ -138,11 +141,13 @@ class ControlServer:
             max_players=len(players),
             dedicated_server=join,
         )
+        # The game server applies these options; the players' games don't
+        # configure the slots of a dedicated-server game, so they count as set.
         for slot, (p, player) in enumerate(zip(participants, players), start=1):
             player.game = game
-            game._player_options[player.id]["Team"] = int(p.get("team", 1))
-            game._player_options[player.id]["StartSpot"] = int(p.get("start_spot", slot))
-            game._player_options[player.id]["Army"] = slot
+            game.set_player_option(player.id, "Team", int(p.get("team", 1)))
+            game.set_player_option(player.id, "StartSpot", int(p.get("start_spot", slot)))
+            game.set_player_option(player.id, "Army", slot)
 
         task = asyncio.create_task(self._launch(game, players))
         self._launches.add(task)
@@ -152,6 +157,48 @@ class ControlServer:
             game.id, len(players),
         )
         return web.json_response({"game_id": game.id}, status=202)
+
+    async def report_dedicated_results(self, request: web.Request) -> web.Response:
+        """
+        Results and army stats of a dedicated-server game, from its game
+        server, the only reporter such a game has. Body:
+
+            {"results": [{"army": int, "result": "victory"|"defeat"|"draw"|...,
+                          "score": int, "metadata": [str, ...]}, ...],
+             "stats": {"stats": [...]} or the same as a JSON string}
+
+        Either part may be left out; results may come one army at a time.
+        Off unless `DEDICATED_SERVER_GAMES`.
+        """
+        if not config.DEDICATED_SERVER_GAMES:
+            raise web.HTTPNotFound()
+        try:
+            game = self.game_service[int(request.match_info["game_id"])]
+        except (KeyError, ValueError):
+            game = None
+        if not isinstance(game, DedicatedServerGame):
+            return web.json_response({"error": "no such dedicated-server game"}, status=404)
+        try:
+            body = await request.json()
+            results = [
+                (int(r["army"]), str(r["result"]), int(r.get("score", 0)),
+                 frozenset(str(m) for m in r.get("metadata", ())))
+                for r in body.get("results", ())
+            ]
+            stats = body.get("stats")
+            if stats is not None and not isinstance(stats, str):
+                stats = json.dumps(stats)
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        for army, result_type, score, metadata in results:
+            await game.add_result(DEDICATED_SERVER_REPORTER, army, result_type, score, metadata)
+        if stats is not None:
+            try:
+                game.report_army_stats(stats)
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                return web.json_response({"error": f"stats: {e}"}, status=400)
+        return web.json_response({"results": len(results), "stats": stats is not None})
 
     async def _launch(self, game: DedicatedServerGame, players) -> None:
         try:

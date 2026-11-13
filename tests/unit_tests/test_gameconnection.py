@@ -253,6 +253,19 @@ async def test_handle_action_GameState_lobby_dedicated_server_joiner(
     game_connection.protocol.send_message.assert_not_called()
 
 
+async def test_dedicated_server_ignores_players_results_and_stats(
+    game: Game,
+    game_connection: GameConnection,
+):
+    game.dedicated_server = DedicatedServerJoin("203.0.113.5:27050", {1: "tok-1"})
+
+    await game_connection.handle_action("GameResult", [1, "victory 10"])
+    await game_connection.handle_action("JsonStats", ['{"stats": []}'])
+
+    game.add_result.assert_not_called()
+    game.report_army_stats.assert_not_called()
+
+
 async def test_abort_dedicated_server_sends_no_DisconnectFromPeer(
     game: Game,
     game_connection: GameConnection,

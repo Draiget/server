@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 
 _TOKEN_CHARS = frozenset(string.printable) - frozenset(string.whitespace)
 
+# The reporter id of results a game server reports (no FAF account has id 0).
+DEDICATED_SERVER_REPORTER = 0
+
 
 class DedicatedServerJoin(NamedTuple):
     """Where a dedicated-server game is played and who may join it."""

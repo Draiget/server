@@ -329,6 +329,10 @@ class GameConnection(GpgNetServerProtocol):
         self._mark_dirty()
 
     async def handle_game_result(self, army: Any, result: Any):
+        if self.game.dedicated_server is not None:
+            # The game server reports the results of its games itself.
+            self._logger.debug("Ignoring a player's result for dedicated-server game %s", self.game.id)
+            return
         army = int(army)
         result = str(result).lower()
 
@@ -405,6 +409,10 @@ class GameConnection(GpgNetServerProtocol):
                     self.game.leaderboard_saved = True
 
     async def handle_json_stats(self, stats: str):
+        if self.game.dedicated_server is not None:
+            # The game server reports the army stats of its games itself.
+            self._logger.debug("Ignoring a player's stats for dedicated-server game %s", self.game.id)
+            return
         try:
             self.game.report_army_stats(stats)
         except json.JSONDecodeError as e:
