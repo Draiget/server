@@ -28,6 +28,7 @@ import server.metrics as metrics
 from .config import TRACE, config
 from .core import Service
 from .decorators import with_logger
+from .games.dedicated import redact_server_tokens
 from .lobbyconnection import LobbyConnection
 from .protocol import DisconnectedError, RabbitMQProtocol
 from .timing import LazyIntervalTimer, datetime_now
@@ -232,7 +233,7 @@ class ServerContext:
             self._logger.log(
                 TRACE,
                 "Published message %s to %s/%s",
-                payload,
+                redact_server_tokens(payload),
                 exchange_name,
                 routing
             )

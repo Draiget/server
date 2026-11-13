@@ -8,11 +8,14 @@ address and that participant's own token in their `game_launch` arguments
 no peer setup (`HostGame`, `JoinGame`, `ConnectToPeer`) for the game.
 """
 
+import asyncio
 import string
+from functools import cached_property
 from typing import TYPE_CHECKING, NamedTuple
 
 from .custom_game import CustomGame
-from .typedefs import InitMode
+from .ladder_game import GameClosedError
+from .typedefs import GameState, InitMode
 
 if TYPE_CHECKING:
     from server.players import Player
@@ -60,6 +63,27 @@ class DedicatedServerJoin(NamedTuple):
         return cls(address, dict(tokens))
 
 
+def redact_server_tokens(message):
+    """
+    A copy of `message` (dicts and lists, any depth) for logging, with every
+    value that follows a `/servertoken` argument replaced: tokens never go into
+    logs. Returns `message` itself when it carries no token.
+    """
+    if isinstance(message, dict):
+        out = {k: redact_server_tokens(v) for k, v in message.items()}
+        return out if any(out[k] is not message[k] for k in message) else message
+    if isinstance(message, list):
+        if "/servertoken" not in message:
+            out = [redact_server_tokens(v) for v in message]
+            return out if any(a is not b for a, b in zip(out, message)) else message
+        out = list(message)
+        for i, v in enumerate(message[:-1]):
+            if v == "/servertoken":
+                out[i + 1] = "<redacted>"
+        return out
+    return message
+
+
 class DedicatedServerGame(CustomGame):
     """
     A custom game whose simulation runs on a dedicated game server. Only the
@@ -71,6 +95,29 @@ class DedicatedServerGame(CustomGame):
     def __init__(self, id, *args, dedicated_server: DedicatedServerJoin, **kwargs):
         super().__init__(id, *args, **kwargs)
         self.dedicated_server = dedicated_server
+
+    # Setup waits, as LadderGame's: the launch is driven by the lobby server.
+    @cached_property
+    def _launch_future(self) -> asyncio.Future:
+        return asyncio.get_running_loop().create_future()
+
+    async def wait_hosted(self, timeout: float):
+        return await asyncio.wait_for(self._hosted_future, timeout=timeout)
+
+    async def wait_launched(self, timeout: float):
+        return await asyncio.wait_for(self._launch_future, timeout=timeout)
+
+    async def launch(self):
+        await super().launch()
+        self._launch_future.set_result(None)
+
+    async def check_game_finish(self, player):
+        if self.state in (GameState.INITIALIZING, GameState.LOBBY):
+            if not self._hosted_future.done():
+                self._hosted_future.set_exception(GameClosedError(player))
+            if not self._launch_future.done():
+                self._launch_future.set_exception(GameClosedError(player))
+        await super().check_game_finish(player)
 
 
 async def launch_dedicated_game(

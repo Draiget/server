@@ -51,6 +51,7 @@ from .games import (
     InitMode,
     VisibilityState
 )
+from .games.dedicated import redact_server_tokens
 from .geoip_service import GeoIpService
 from .ladder_service import LadderService
 from .ladder_service.veto_system import VetoService
@@ -1492,7 +1493,10 @@ class LobbyConnection:
         """Write a message into the send buffer."""
         assert self.protocol is not None
 
-        self._logger.log(TRACE, ">> %s: %s", self.get_user_identifier(), message)
+        self._logger.log(
+            TRACE, ">> %s: %s",
+            self.get_user_identifier(), redact_server_tokens(message)
+        )
         self.protocol.write_message(message)
 
     async def on_connection_lost(self):

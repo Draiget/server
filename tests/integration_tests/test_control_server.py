@@ -68,7 +68,9 @@ async def post_dedicated_game(control_server, body) -> tuple[int, dict]:
     url = f"http://{control_server.host}:{control_server.port}/dedicated_games"
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=body) as resp:
-            return resp.status, await resp.json(content_type=None)
+            if resp.content_type != "application/json":
+                return resp.status, {}
+            return resp.status, await resp.json()
 
 
 @fast_forward(2)
